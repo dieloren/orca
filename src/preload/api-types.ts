@@ -680,6 +680,13 @@ export type PreloadApi = {
       threadId: string
       resolve: boolean
     }) => Promise<boolean>
+    setPRFileViewed: (args: {
+      repoPath: string
+      prNumber: number
+      pullRequestId: string
+      path: string
+      viewed: boolean
+    }) => Promise<boolean>
     updatePRTitle: (args: { repoPath: string; prNumber: number; title: string }) => Promise<boolean>
     mergePR: (args: {
       repoPath: string
