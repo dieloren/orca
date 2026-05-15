@@ -21,6 +21,17 @@ export type LspDiagnostic = {
   message: string
 }
 
+export type LspTextEdit = {
+  range: LspRange
+  newText: string
+}
+
+export type LspInsertReplaceEdit = {
+  insert: LspRange
+  replace: LspRange
+  newText: string
+}
+
 export type LspCompletionItem = {
   label: string
   kind?: number
@@ -28,6 +39,8 @@ export type LspCompletionItem = {
   documentation?: string | { kind: string; value: string }
   insertText?: string
   insertTextFormat?: number
+  textEdit?: LspTextEdit | LspInsertReplaceEdit
+  additionalTextEdits?: LspTextEdit[]
   sortText?: string
   filterText?: string
 }

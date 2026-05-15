@@ -227,8 +227,7 @@ async function main(): Promise<void> {
   const _gitHandler = new GitHandler(dispatcher, context)
   void _gitHandler
 
-  const _lspHandler = new LspHandler(dispatcher)
-  void _lspHandler
+  const lspHandler = new LspHandler(dispatcher)
 
   const _preflightHandler = new PreflightHandler(dispatcher)
   void _preflightHandler
@@ -486,7 +485,7 @@ async function main(): Promise<void> {
 
   function startGrace(): void {
     ptyHandler.startGraceTimer(() => {
-      shutdown()
+      void shutdown()
     })
   }
 
@@ -526,10 +525,16 @@ async function main(): Promise<void> {
     })
   }
 
-  function shutdown(): void {
+  let shuttingDown = false
+  async function shutdown(): Promise<void> {
+    if (shuttingDown) {
+      return
+    }
+    shuttingDown = true
     dispatcher.dispose()
     ptyHandler.dispose()
     fsHandler.dispose()
+    await lspHandler.dispose().catch(() => undefined)
     hookServer.stop()
     if (socketServer) {
       socketServer.close()
@@ -538,8 +543,8 @@ async function main(): Promise<void> {
     process.exit(0)
   }
 
-  process.on('SIGTERM', shutdown)
-  process.on('SIGINT', shutdown)
+  process.on('SIGTERM', () => void shutdown())
+  process.on('SIGINT', () => void shutdown())
   // Why: when the SSH session drops, the OS sends SIGHUP to the relay's
   // process group. Node's default SIGHUP behavior is to exit immediately,
   // which kills all PTYs before the grace period can start. Ignoring

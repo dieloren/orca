@@ -25,11 +25,17 @@ type LspModelContext = LspDocumentContext & {
   openPromise: Promise<void> | null
 }
 
+type LspModelEntry = {
+  context: LspModelContext
+  references: number
+  disposed: boolean
+}
+
 const LSP_MARKER_OWNER = 'orca-lsp'
 const CHANGE_DEBOUNCE_MS = 250
 const SUPPORTED_LSP_LANGUAGES = ['rust', 'c', 'cpp', 'go', 'python', 'typescript', 'javascript']
 
-const contextsByModelUri = new Map<string, LspModelContext>()
+const entriesByModelUri = new Map<string, LspModelEntry>()
 let providersRegistered = false
 let diagnosticsRegistered = false
 
@@ -151,7 +157,11 @@ function completionItems(result: LspCompletionResult | null): LspCompletionItem[
 }
 
 function findContext(model: monacoTypes.editor.ITextModel): LspModelContext | undefined {
-  return contextsByModelUri.get(model.uri.toString())
+  return entriesByModelUri.get(model.uri.toString())?.context
+}
+
+function contexts(): Iterable<LspModelContext> {
+  return Array.from(entriesByModelUri.values(), (entry) => entry.context)
 }
 
 function documentPayload(context: LspModelContext, content = context.content): LspDocumentContext {
@@ -204,6 +214,10 @@ async function ensureLatestContent(
   }
   const content = model.getValue()
   if (content !== context.lastSyncedContent) {
+    if (context.changeTimer) {
+      clearTimeout(context.changeTimer)
+      context.changeTimer = null
+    }
     await window.api.lsp.changeDocument(documentPayload(context, content))
     context.lastSyncedContent = content
   }
@@ -235,7 +249,7 @@ function registerDiagnostics(monaco: Monaco): void {
   }
   diagnosticsRegistered = true
   window.api.lsp.onDiagnostics((event: LspDiagnosticsEvent) => {
-    for (const context of contextsByModelUri.values()) {
+    for (const context of contexts()) {
       if (
         context.filePath !== event.filePath ||
         context.worktreePath !== event.worktreePath ||
@@ -265,6 +279,90 @@ function registerDiagnostics(monaco: Monaco): void {
   })
 }
 
+function sameDocumentIdentity(context: LspModelContext, args: LspDocumentContext): boolean {
+  return (
+    context.worktreePath === args.worktreePath &&
+    context.filePath === args.filePath &&
+    context.languageId === args.languageId &&
+    (context.connectionId ?? undefined) === (args.connectionId ?? undefined) &&
+    (context.runtimeEnvironmentId ?? undefined) === (args.runtimeEnvironmentId ?? undefined)
+  )
+}
+
+function completionInsertText(item: LspCompletionItem): string {
+  return item.textEdit?.newText ?? item.insertText ?? item.label
+}
+
+function completionRange(
+  monaco: Monaco,
+  item: LspCompletionItem,
+  fallbackRange: monacoTypes.Range
+): monacoTypes.languages.CompletionItem['range'] {
+  const textEdit = item.textEdit
+  if (!textEdit) {
+    return fallbackRange
+  }
+  if ('insert' in textEdit) {
+    return {
+      insert: monacoRange(monaco, textEdit.insert),
+      replace: monacoRange(monaco, textEdit.replace)
+    }
+  }
+  return monacoRange(monaco, textEdit.range)
+}
+
+function additionalTextEdits(
+  monaco: Monaco,
+  item: LspCompletionItem
+): monacoTypes.languages.TextEdit[] | undefined {
+  return item.additionalTextEdits?.map((edit) => ({
+    range: monacoRange(monaco, edit.range),
+    text: edit.newText
+  }))
+}
+
+function startOpening(entry: LspModelEntry): void {
+  const context = entry.context
+  context.openPromise = openContext(context).catch(() => undefined)
+}
+
+function releaseEntry(monaco: Monaco, modelUri: string, entry: LspModelEntry): void {
+  if (entry.references <= 0) {
+    return
+  }
+  entry.references--
+  if (entry.references > 0) {
+    return
+  }
+
+  entry.disposed = true
+  const isCurrentEntry = entriesByModelUri.get(modelUri) === entry
+  if (isCurrentEntry) {
+    entriesByModelUri.delete(modelUri)
+  }
+  if (entry.context.changeTimer) {
+    clearTimeout(entry.context.changeTimer)
+    entry.context.changeTimer = null
+  }
+  if (isCurrentEntry) {
+    const model = monaco.editor.getModel(monaco.Uri.parse(modelUri))
+    if (model) {
+      monaco.editor.setModelMarkers(model, LSP_MARKER_OWNER, [])
+    }
+  }
+  void entry.context.openPromise
+    ?.then(async () => {
+      const currentEntry = entriesByModelUri.get(modelUri)
+      if (currentEntry && sameDocumentIdentity(currentEntry.context, entry.context)) {
+        return
+      }
+      if (entry.context.opened && hasLspApi()) {
+        await window.api.lsp.closeDocument(documentIdentityPayload(entry.context))
+      }
+    })
+    .catch(() => {})
+}
+
 export function ensureMonacoLspProviders(monaco: Monaco): void {
   registerDiagnostics(monaco)
   if (providersRegistered) {
@@ -282,7 +380,6 @@ export function ensureMonacoLspProviders(monaco: Monaco): void {
         }
         const result = await window.api.lsp.completion({
           ...documentIdentityPayload(context),
-          content: model.getValue(),
           position: lspPosition(position)
         })
         const range = model.getWordUntilPosition(position)
@@ -298,14 +395,15 @@ export function ensureMonacoLspProviders(monaco: Monaco): void {
             kind: completionKind(monaco, item.kind),
             detail: item.detail,
             documentation: documentationToMarkdown(item.documentation),
-            insertText: item.insertText ?? item.label,
+            insertText: completionInsertText(item),
             insertTextRules:
               item.insertTextFormat === 2
                 ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
                 : undefined,
             sortText: item.sortText,
             filterText: item.filterText,
-            range: replaceRange
+            range: completionRange(monaco, item, replaceRange),
+            additionalTextEdits: additionalTextEdits(monaco, item)
           }))
         }
       }
@@ -319,7 +417,6 @@ export function ensureMonacoLspProviders(monaco: Monaco): void {
         }
         const hover = await window.api.lsp.hover({
           ...documentIdentityPayload(context),
-          content: model.getValue(),
           position: lspPosition(position)
         })
         const contents = hoverContents(hover)
@@ -340,7 +437,6 @@ export function ensureMonacoLspProviders(monaco: Monaco): void {
         }
         const definitions = await window.api.lsp.definition({
           ...documentIdentityPayload(context),
-          content: model.getValue(),
           position: lspPosition(position)
         })
         return definitions.map((location: LspLocation) => ({
@@ -357,6 +453,28 @@ export function registerMonacoLspDocument(
   args: LspDocumentContext & { modelUri: string }
 ): () => void {
   ensureMonacoLspProviders(monaco)
+  const existing = entriesByModelUri.get(args.modelUri)
+  if (existing && sameDocumentIdentity(existing.context, args)) {
+    existing.references++
+    existing.context.content = args.content
+    let released = false
+    return () => {
+      if (released) {
+        return
+      }
+      released = true
+      releaseEntry(monaco, args.modelUri, existing)
+    }
+  }
+  if (existing) {
+    // Why: Monaco providers are keyed only by model URI. If the same URI is
+    // reused for a different backend identity, keeping both contexts would make
+    // request routing ambiguous; replace the stale owner before opening a new one.
+    while (existing.references > 0) {
+      releaseEntry(monaco, args.modelUri, existing)
+    }
+  }
+
   const context: LspModelContext = {
     ...args,
     opened: false,
@@ -365,32 +483,28 @@ export function registerMonacoLspDocument(
     changeTimer: null,
     openPromise: null
   }
-  context.openPromise = openContext(context).catch(() => undefined)
-  contextsByModelUri.set(args.modelUri, context)
+  const entry: LspModelEntry = {
+    context,
+    references: 1,
+    disposed: false
+  }
+  entriesByModelUri.set(args.modelUri, entry)
+  startOpening(entry)
 
+  let released = false
   return () => {
-    const current = contextsByModelUri.get(args.modelUri)
-    if (current !== context) {
+    if (released) {
       return
     }
-    contextsByModelUri.delete(args.modelUri)
-    if (context.changeTimer) {
-      clearTimeout(context.changeTimer)
-    }
-    const model = monaco.editor.getModel(monaco.Uri.parse(args.modelUri))
-    if (model) {
-      monaco.editor.setModelMarkers(model, LSP_MARKER_OWNER, [])
-    }
-    if (context.opened && hasLspApi()) {
-      void window.api.lsp.closeDocument(documentIdentityPayload(context)).catch(() => {})
-    }
+    released = true
+    releaseEntry(monaco, args.modelUri, entry)
   }
 }
 
 export function updateMonacoLspDocumentContent(modelUri: string, content: string): void {
-  const context = contextsByModelUri.get(modelUri)
-  if (!context) {
+  const entry = entriesByModelUri.get(modelUri)
+  if (!entry) {
     return
   }
-  scheduleChange(context, content)
+  scheduleChange(entry.context, content)
 }
