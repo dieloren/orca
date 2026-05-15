@@ -26,6 +26,7 @@ import { RelayContext } from './context'
 import { PtyHandler } from './pty-handler'
 import { FsHandler } from './fs-handler'
 import { GitHandler } from './git-handler'
+import { LspHandler } from './lsp-handler'
 import { PreflightHandler } from './preflight-handler'
 import { PortScanHandler } from './port-scan-handler'
 import { endpointDirForRelaySocket, RelayAgentHookServer } from './agent-hook-server'
@@ -225,6 +226,9 @@ async function main(): Promise<void> {
   // so we hold the reference only for potential future disposal.
   const _gitHandler = new GitHandler(dispatcher, context)
   void _gitHandler
+
+  const _lspHandler = new LspHandler(dispatcher)
+  void _lspHandler
 
   const _preflightHandler = new PreflightHandler(dispatcher)
   void _preflightHandler

@@ -221,6 +221,16 @@ import type {
   NotesPanelOpenState,
   NotesPanelStateArgs
 } from '../shared/notes-types'
+import type {
+  LspCompletionResult,
+  LspDiagnosticsEvent,
+  LspDocumentChange,
+  LspDocumentContext,
+  LspHover,
+  LspLocation,
+  LspRequestContext,
+  LspServerStatus
+} from '../shared/lsp-types'
 
 export type BrowserApi = {
   registerGuest: (args: {
@@ -1059,6 +1069,20 @@ export type PreloadApi = {
   memory: MemoryApi
   claudeUsage: ClaudeUsageApi
   codexUsage: CodexUsageApi
+  lsp: {
+    getStatus: (args: LspDocumentChange) => Promise<LspServerStatus>
+    openDocument: (args: LspDocumentContext) => Promise<LspServerStatus>
+    changeDocument: (args: LspDocumentChange) => Promise<void>
+    closeDocument: (args: Omit<LspDocumentChange, 'content'>) => Promise<void>
+    completion: (args: LspRequestContext) => Promise<LspCompletionResult | null>
+    hover: (args: LspRequestContext) => Promise<LspHover | null>
+    definition: (args: LspRequestContext) => Promise<LspLocation[]>
+    getStats: () => Promise<{
+      activeSessions: number
+      sessions: Record<string, unknown>[]
+    }>
+    onDiagnostics: (callback: (event: LspDiagnosticsEvent) => void) => () => void
+  }
   fs: {
     readDir: (args: { dirPath: string; connectionId?: string }) => Promise<DirEntry[]>
     readFile: (args: {
