@@ -1053,27 +1053,37 @@ export default function TerminalPane({
     []
   )
 
-  const handlePrimarySelectionMiddleMouseDown = useCallback(
-    (event: React.MouseEvent<HTMLDivElement>): void => {
-      const target = event.target
-      if (event.button !== 1 || !terminalShouldHandleMiddleClick(target)) {
-        return
+  const getPrimarySelectionMiddleClickPane = useCallback(
+    (target: EventTarget | null) => {
+      if (!terminalShouldHandleMiddleClick(target)) {
+        return null
       }
-      if (!isPrimarySelectionEnabled()) {
-        return
-      }
-      const text = getPrimarySelectionText()
       const manager = managerRef.current
       if (!manager) {
-        return
+        return null
       }
       const clickedPane =
         manager.getPanes().find((pane) => pane.container.contains(target)) ??
         manager.getActivePane() ??
         manager.getPanes()[0]
+      if (!clickedPane || clickedPane.terminal.modes.mouseTrackingMode !== 'none') {
+        return null
+      }
+      return clickedPane
+    },
+    [terminalShouldHandleMiddleClick]
+  )
+
+  const handlePrimarySelectionMiddleMouseDown = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>): void => {
+      if (event.button !== 1 || !isPrimarySelectionEnabled()) {
+        return
+      }
+      const clickedPane = getPrimarySelectionMiddleClickPane(event.target)
       if (!clickedPane) {
         return
       }
+      const text = getPrimarySelectionText()
       event.preventDefault()
       event.stopPropagation()
       if (text) {
@@ -1081,7 +1091,7 @@ export default function TerminalPane({
       }
       clickedPane.terminal.focus()
     },
-    [terminalShouldHandleMiddleClick]
+    [getPrimarySelectionMiddleClickPane]
   )
 
   const handlePrimarySelectionAuxClick = useCallback(
@@ -1089,13 +1099,13 @@ export default function TerminalPane({
       if (
         event.button === 1 &&
         isPrimarySelectionEnabled() &&
-        terminalShouldHandleMiddleClick(event.target)
+        getPrimarySelectionMiddleClickPane(event.target)
       ) {
         event.preventDefault()
         event.stopPropagation()
       }
     },
-    [terminalShouldHandleMiddleClick]
+    [getPrimarySelectionMiddleClickPane]
   )
 
   const effectiveAppearance = settings
