@@ -1036,10 +1036,10 @@
 
 .orca-diff-comment-inline {
   width: 100%;
-  /* Why: match the popover's horizontal inset so the saved card lines up with
-     the new-comment popover that preceded it. Both anchor at `left: 56px` and
-     cap at 420px wide. */
-  padding: 4px 24px 6px 56px;
+  /* Why: Monaco's view-zone node already starts after the diff gutter. Keep
+     only a small text-column inset so saved notes align with the code instead
+     of drifting right from the line they annotate. */
+  padding: 4px 24px 6px 16px;
   box-sizing: border-box;
 }
 
