@@ -1190,6 +1190,10 @@ export type GlobalSettings = {
   editorAutoSave: boolean
   editorAutoSaveDelayMs: number
   editorMinimapEnabled: boolean
+  /** Why: mirrors X11 primary-selection muscle memory without mutating the
+   *  normal system clipboard; Linux enables it by default, other platforms
+   *  leave middle-click semantics unchanged unless the user opts in. */
+  primarySelectionMiddleClickPaste?: boolean
   terminalFontSize: number
   terminalFontFamily: string
   terminalFontWeight: number

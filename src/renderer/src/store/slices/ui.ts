@@ -257,6 +257,7 @@ export type UISlice = {
       | 'general'
       | 'browser'
       | 'appearance'
+      | 'input'
       | 'terminal'
       | 'computer-use'
       | 'developer-permissions'

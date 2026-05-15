@@ -21,6 +21,7 @@ import {
   Blocks,
   Mic,
   SquareTerminal,
+  TextCursorInput,
   UserCog
 } from 'lucide-react'
 import type { OrcaHooks } from '../../../../shared/types'
@@ -34,6 +35,7 @@ import { DEFAULT_APP_FONT_FAMILY } from '../../../../shared/constants'
 import { GeneralPane, GENERAL_PANE_SEARCH_ENTRIES } from './GeneralPane'
 import { BrowserPane, BROWSER_PANE_SEARCH_ENTRIES } from './BrowserPane'
 import { AppearancePane, APPEARANCE_PANE_SEARCH_ENTRIES } from './AppearancePane'
+import { InputPane, INPUT_PANE_SEARCH_ENTRIES } from './InputPane'
 import { ShortcutsPane, SHORTCUTS_PANE_SEARCH_ENTRIES } from './ShortcutsPane'
 import { TerminalPane } from './TerminalPane'
 import { useGhosttyImport } from './useGhosttyImport'
@@ -78,6 +80,7 @@ type SettingsNavTarget =
   | 'browser'
   | 'git'
   | 'appearance'
+  | 'input'
   | 'terminal'
   | 'notifications'
   | 'computer-use'
@@ -436,6 +439,13 @@ function Settings(): React.JSX.Element {
         searchEntries: APPEARANCE_PANE_SEARCH_ENTRIES
       },
       {
+        id: 'input',
+        title: 'Input & Editing',
+        description: 'Selection and editing behavior.',
+        icon: TextCursorInput,
+        searchEntries: INPUT_PANE_SEARCH_ENTRIES
+      },
+      {
         id: 'terminal',
         title: 'Terminal',
         description: 'Terminal appearance, previews, and defaults for new panes.',
@@ -781,6 +791,15 @@ function Settings(): React.JSX.Element {
                     applyTheme={applyTheme}
                     fontSuggestions={fontSuggestions}
                   />
+                </SettingsSection>
+
+                <SettingsSection
+                  id="input"
+                  title="Input & Editing"
+                  description="Selection and editing behavior."
+                  searchEntries={INPUT_PANE_SEARCH_ENTRIES}
+                >
+                  <InputPane settings={settings} updateSettings={updateSettings} />
                 </SettingsSection>
 
                 <SettingsSection
